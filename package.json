@@ -1,0 +1,33 @@
+{
+    "name":  "dsh-agent-emotion",
+    "version":  "0.1.1",
+    "description":  "情感与人格插件：6 维进化棱镜的运行时传感器——感知层（订阅 DSH 工具管线/思考流事件采集 6 侧面信号）→ 情感引擎（增速差值=情感信号）→ 人格层（权重漂移）→ 呈现层（emotion_status）。结构化事件为主，思维链仅元特征，纯观察默认。",
+    "type":  "module",
+    "main":  "lib/index.js",
+    "types":  "lib/types/index.d.ts",
+    "exports":  {
+                    ".":  {
+                              "types":  "./lib/types/index.d.ts",
+                              "default":  "./lib/index.js"
+                          },
+                    "./package.json":  "./package.json"
+                },
+    "files":  [
+                  "lib",
+                  "README.md"
+              ],
+    "license":  "MIT",
+    "peerDependencies":  {
+                             "@deepseek-ai/cordis":  "^4.0.1",
+                             "@deepseek-ai/schemastery":  "^3.18.1-rc.1",
+                             "@deepseek-ai/dsh-tools":  "^0.1.0-rc.6"
+                         },
+    "devDependencies":  {
+                            "@types/node":  "^22.0.0",
+                            "typescript":  "^5.9.3"
+                        },
+    "scripts":  {
+                    "build":  "tsc -p tsconfig.json",
+                    "typecheck":  "tsc -p tsconfig.json --noEmit"
+                }
+}
