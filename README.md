@@ -1,5 +1,11 @@
 # dsh-agent-emotion
 
+
+<p align="center">
+  <a href="https://github.com/jonah791/dsh-agent-emotion"><img src="https://img.shields.io/badge/version-0.1.1-blue" alt="version"></a>
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="license">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6" alt="TypeScript">
+</p>
 > 情感与人格插件：6 维进化棱镜的运行时传感器。
 > DeepSeek Harness 自研插件 · v0.1.1
 
