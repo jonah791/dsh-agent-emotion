@@ -108,12 +108,13 @@
 | 5 | `preStepInject=true` 时确实注入 `[情感感知]` 用户消息并放行 | 会话事件流出现 `source.kind='plugin'`、`plugin='dsh-agent-emotion'` 的 `user/message`，且该步未卡死；`ctx.on` 返回前调用 `next()` | 待验收（线上配置 `false`，注入路径未跑） |
 | 6 | `memoryApi` 未挂载时不抛错、不回流 | 跨天后 `history` 增长而记忆库无 `## 6 维日结` 新增条目；进程日志无未捕获异常 | 待验收 |
 | 7 | 状态文件损坏可自愈 | 写入非法 JSON → 触发一次工具调用 → 文件被重写为合法 JSON 且 `emotion_status` 仍 `ok:true` | 待验收 |
-| 8 | 纯观察：不改写被订阅的事件与决策 | 对比 `preStepInject=false` 下开启/停用插件的会话事件流，除 `emotion-state.json` 外无差异 | 待验收（无单测、无 trace 侧车） |
+| 8 | 纯观察：不改写被订阅的事件与决策 | 对比 `preStepInject=false` 下开启/停用插件的会话事件流，除 `emotion-state.json` 外无差异 | 待验收（E2E 对比未做；纯逻辑层已有 50 例单测，但**本条判的是 E2E 观察面**，不得用单测替代） |
 | 9 | `mainSessionOnly=true` 过滤子代理调用 | 派一次 subagent 工具调用后主状态文件 `toolCalls` 不增（子代理会话 `delegationDepth !== 0`） | 待验收 |
 
 ## 8 · 与实现的关系
 
-- **实现面**：单一文件 `src/index.ts`（419 行）→ `tsc` 产出 `lib/index.js` + `lib/types/index.d.ts`；**无 `tests/` 目录、`package.json` 无 `test` 脚本** → 目前所有行为只能靠「落盘产物 + 工具面 + 会话事件流」外部验证（可测试性缺口）。可测试化候选（纯函数、无 IO）：`sideGrowth`、`computeEmotions`、`driftWeights`、`isMainAgent`、`ensureToday`（时间需注入）——抽出即可离线单测，属后续动作。
+- **实现面**（2026-09-14 刷新）：原单一文件 `src/index.ts`（419 行）已按可测试性拆层——`src/engine.ts`（203 行，纯逻辑：`sideGrowth`/`computeEmotions`/`driftWeights`/`isMainAgent`/`ensureToday`）+ `src/storage.ts`（53 行，状态读写与自愈）+ `src/index.ts`（197 行，只剩订阅/工具接线）；`tsc` 产出 `lib/index.js` + `lib/types/index.d.ts`。
+  **可测试性缺口已闭环**：`tests/engine.test.mjs` + `tests/storage.test.mjs` 共 **50 例离线单测**（`npm test` = `node --test "tests/*.test.mjs"`，实测 `pass 50 / fail 0`）——原先「所有行为只能靠落盘产物与事件流外部验证」的处境不再成立；仍未覆盖面是**跨日/注入/E2E** 类（见 §7 表中 `待验收` 各行）。
 - **生效判据**（改了代码后凭什么说「真的在跑新代码」）：
   1. `pnpm build` 后比 `lib/index.js` 的 mtime 与 **web 进程启动时间**——`E:\alice\.dsh\plugin-boot.jsonl` 记 `processStartMs` 与 `plugins[].libMtimeMs`：**产物 mtime 必须晚于进程启动**，否则是旧实例跑旧代码（2026-09-13 教训：重建 ≠ 生效）。
   2. 落盘产物：`E:\alice\.dsh\agent-emotion\emotion-state.json` 在插件行为发生时被重写（内容随工具调用前进）。
@@ -126,6 +127,7 @@
 
 ## 9 · 实践修订记录
 
+- 2026-09-14 文档回修（README/语义漂移治理）：§8「实现面」与 §10-4 的「无 `tests/`、无 `test` 脚本」已过期——实际已拆层为 `engine.ts`/`storage.ts`/`index.ts` 并有 50 例单测（`pass 50 / fail 0` 实测）；§7-8 的「无单测」依据作废（**但该条判的是 E2E 观察面，仍待验收**，不得用单测替代）
 - 2026-09-14 补课：本插件此前无语义文档（可维护性工程）
 - 2026-09-03 修复「上午必沮丧」时间窗口不对称：基线按当日时间进度折算（clamp [0.05,1]），不再与「昨日全天」硬比
 - 2026-09-06 新增 `memoryApi` 日结回流（跨天时把昨日 6 维统计回流为 episodic）
@@ -136,5 +138,5 @@
 1. **并发写竞态**：每次事件「全量读 → 改 → 全量写」且无锁；主会话与并行实例（或 `session/event` 高频期）同写可能丢计数。未测量丢失率，也未做原子写（临时文件 + rename）。
 2. **字段未接线/死代码**：`reasoningChars` / `reasoningEvents` 定义在 `SideStats` 却无写入点，恒为 0——「思维链仅元特征」目前是设计声明而非事实；`ensureToday` 里 `computeEmotions(baseline, baseline)` 的结果未被写入（push 的是 `emotions: {}`），`history[].emotions` 恒为空对象，历史情感史实际不存在。
 3. **信号定义偏差**：①「认知锚点=命中率」只用 `result.isError` 判成败，不含「预期内容是否正确」，与 SOUL 中「预测错误=升级数据包」存在偏差，是否升级为结构化预期对比待决；②「因果留痕」只认硬编码 `WRITE_TOOLS`，新增写入类工具不会自动计入，是否改按工具元数据判定待定。
-4. **可维护性缺口（§5.22）**：无单测、无 trace 侧车、无 `build` 自报指纹（`<version>@<mtime>`）——「断在哪一段 / 耗时多少」目前无法一条命令回答；状态文件亦无 schema 版本字段，未来结构变更只有「默认值补齐」这一层兼容。
+4. **可维护性缺口（§5.22）**（2026-09-14 部分闭环）：~~无单测~~ → 已补 **50 例离线单测**（`engine`/`storage` 纯层，`npm test` 可复跑）；**仍未补**：trace 侧车、`build` 自报指纹（`<version>@<mtime>`）——「断在哪一段 / 耗时多少」目前仍无法一条命令回答；状态文件亦无 schema 版本字段，未来结构变更只有「默认值补齐」这一层兼容。
 5. **`frontierTools` 语义重叠**：它等于累计去重工具名数（不区分新旧），与「今日新工具」的字面含义不同，长期只增不减。
