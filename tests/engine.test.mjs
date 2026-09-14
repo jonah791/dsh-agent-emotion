@@ -9,6 +9,7 @@ import {
   sideGrowth, computeEmotions, driftWeights, ensureToday, runEmotionEngine,
   isMainAgent, shouldRecordEvent, recordToolResult, recordSessionEvent,
   shouldReflux, buildDailyDigest,
+  freshDefaultState, normalizeHistory, normalizeHistoryEntry,
 } from '../lib/engine.js'
 
 const stats = (over = {}) => ({ ...emptyStats(), ...over })
@@ -198,18 +199,76 @@ test('runEmotionEngine：有基线 → 按当日进度折算昨日基线（上�
   assert.ok(Math.abs(SIX_SIDES.reduce((a, k) => a + s.weights[k], 0) - 1) < 1e-12)
 })
 
-test('退化：history 项 stats 存在但字段缺失 → 不抛（NaN 信号，沿用原行为）', () => {
+test('修复（2026-09-14）：history 项 stats 字段缺失 → 补零，不再产生 NaN 信号', () => {
+  // 原行为：stats 存在但字段缺失 → undefined 参与算术 → emotions 全 NaN（「沿用原行为」的既有缺陷）。
+  // 现行为：历史项经 normalizeHistoryEntry 补零统计 → 确定性有限数。
   const s = state({ today: '2026-09-14', stats: stats({ toolCalls: 1 }), history: [{ date: '2026-09-13', stats: {}, weights: {}, emotions: {} }] })
   assert.doesNotThrow(() => runEmotionEngine(s, new Date(2026, 8, 14, 12, 0, 0)))
   assert.equal(typeof s.emotions.cognition, 'number')
+  assert.ok(Number.isFinite(s.emotions.cognition))
+  assert.ok(SIX_SIDES.every((k) => Number.isFinite(s.emotions[k])), '六个侧面情感值均应为有限数')
 })
 
-test('已登记缺口 L1（本次未改行为）：history 项缺 stats → runEmotionEngine 抛 TypeError', () => {
-  // 现状锁定：原实现同样抛（sideGrowth(last.stats) 直接取字段）。
-  // 可达性：emotion-state.json 的 history 未经结构校验（storage.loadState 只补顶层字段）——
-  // 手工编辑/撕裂写可构造出该样本。修复属行为变更，另行登记，不在本次「只搬位置」范围内。
+test('L1 已修（2026-09-14）：history 项缺 stats → 不抛，按零基线计算（事件回调不再炸）', () => {
+  // 修复前：`sideGrowth(last.stats)` 直接取字段 → TypeError 抛在**事件回调内**，该次事件处理整条崩掉。
+  // 可达性：emotion-state.json 的 history 曾未经结构校验（撕裂写 / 手改 / 旧版本文件均可构造）。
   const s = state({ today: '2026-09-14', stats: stats({ toolCalls: 1 }), history: [{ date: '2026-09-13' }] })
-  assert.throws(() => runEmotionEngine(s, new Date(2026, 8, 14, 12, 0, 0)), TypeError)
+  assert.doesNotThrow(() => runEmotionEngine(s, new Date(2026, 8, 14, 12, 0, 0)))
+  // 零基线 sideGrowth(emptyStats()) = {resilience:1, frontier:1, legacy:1}，12:00 折算 0.5：
+  // cognition 基线 0 → 今日 1 记为 1；resilience/frontier/legacy = (1-0.5)/0.5 = 1；existence/relation = 0
+  assert.equal(s.emotions.cognition, 1)
+  assert.equal(s.emotions.resilience, 1)
+  assert.equal(s.emotions.existence, 0)
+  assert.ok(SIX_SIDES.every((k) => Number.isFinite(s.emotions[k])))
+})
+
+// ---------- 历史项规范化（L1/L3 修复的纯函数层） ----------
+
+test('normalizeHistoryEntry：缺字段补默认（数值非有限数归零），判据与 emptyStats/weights 单一真源', () => {
+  const e = normalizeHistoryEntry({ date: '2026-09-13' })
+  assert.deepEqual(e.stats, emptyStats())
+  assert.equal(e.date, '2026-09-13')
+  assert.deepEqual(e.emotions, {})
+  assert.equal(Object.keys(e.weights).length, 6)
+
+  const dirty = normalizeHistoryEntry({ date: 5, stats: { toolCalls: 'x', toolErrors: Infinity }, weights: { cognition: NaN, legacy: 0.2 }, emotions: { a: 1, b: 'x', c: NaN } })
+  assert.equal(dirty.date, '', '非字符串 date → 空串')
+  assert.equal(dirty.stats.toolCalls, 0, '非数 → 归零')
+  assert.equal(dirty.stats.toolErrors, 0, 'Infinity → 归零（非有限数）')
+  assert.equal(dirty.weights.cognition, DEFAULT_STATE.weights.cognition, 'NaN → 回退默认权重')
+  assert.equal(dirty.weights.legacy, 0.2, '有限数保留')
+  assert.deepEqual(dirty.emotions, { a: 1 }, '情绪只保留有限数项')
+})
+
+test('退化：normalizeHistoryEntry 喂非对象（null/数组/字符串/数）→ undefined（由调用方丢弃）', () => {
+  for (const v of [null, undefined, [1, 2], 'junk', 42, true]) {
+    assert.equal(normalizeHistoryEntry(v), undefined, `${String(v)} 应判为非历史项`)
+  }
+})
+
+test('normalizeHistory：非数组 → []；坏项丢弃、好项保留且顺序不变', () => {
+  assert.deepEqual(normalizeHistory(null), [])
+  assert.deepEqual(normalizeHistory('x'), [])
+  assert.deepEqual(normalizeHistory({ 0: 'a' }), [])
+  const list = normalizeHistory([null, { date: '2026-09-12' }, 'junk', { date: '2026-09-13', stats: { toolCalls: 3 } }])
+  assert.equal(list.length, 2)
+  assert.deepEqual(list.map((e) => e.date), ['2026-09-12', '2026-09-13'])
+  assert.equal(list[1].stats.toolCalls, 3)
+})
+
+test('freshDefaultState：每次调用都是全新对象（不共享模块级引用）', () => {
+  const a = freshDefaultState()
+  const b = freshDefaultState()
+  a.stats.toolCalls = 7
+  a.history.push({ date: 'd', stats: emptyStats(), weights: {}, emotions: {} })
+  a.toolNames.push('write')
+  assert.equal(b.stats.toolCalls, 0)
+  assert.deepEqual(b.history, [])
+  assert.deepEqual(b.toolNames, [])
+  assert.equal(DEFAULT_STATE.stats.toolCalls, 0)
+  assert.deepEqual(DEFAULT_STATE.history, [])
+  assert.notEqual(a.stats, b.stats)
+  assert.notEqual(a.stats, DEFAULT_STATE.stats)
 })
 
 // ---------- 门控判据 ----------

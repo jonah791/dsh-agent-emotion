@@ -60,7 +60,7 @@
 
 ### 4.2 状态文件契约
 
-路径：`resolveDataPath()` = `config.dataDir || join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'agent-emotion')` + `/emotion-state.json`；顶层字段 `today`、`stats`（9 键）、`toolNames[]`、`triggerCount`、`weights`、`emotions`、`history[]`（每项 `date/stats/weights/emotions`）。
+路径：`resolveDataPath()` = `config.dataDir || join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'agent-emotion')` + `/emotion-state.json`；顶层字段 `today`、`stats`（9 键）、`toolNames[]`、`triggerCount`、`weights`、`emotions`、`history[]`（每项 `date/stats/weights/emotions`）。**读入即规范化（2026-09-14）**：`loadState` 的 `history` 逐项过 `normalizeHistoryEntry`（缺字段补默认、数值非有限数归零、非对象项丢弃）；缺文件/损坏分支返回 `freshDefaultState()`（每次新造对象，不与模块级 `DEFAULT_STATE` 共享引用）。⇒ **落盘形状与内存形状可以不同**，`history` 的往返恒等只在已规范化的样本上成立。
 
 ### 4.3 可选服务契约
 
@@ -127,6 +127,7 @@
 
 ## 9 · 实践修订记录
 
+- 2026-09-14 修复两条已登记缺口（任务 `t-b5bcd8c5`）：① **L1（中高）**`runEmotionEngine` 读 `history` 末项缺 `stats` → `TypeError` 抛在**事件回调内**（该次事件处理整条崩掉；可达：撕裂写 / 手改 / 旧版本状态文件）⇒ 新增纯函数 `normalizeHistoryEntry` / `normalizeHistory`（缺字段补默认、数值非有限数归零、非对象项丢弃），`loadState` 读入即规范化 + 引擎读基线一律过规范化；顺带消除「stats 存在但字段缺失 → emotions 全 NaN」的旧行为。② **L3（中低）**缺文件分支 `{ ...DEFAULT_STATE }` 与模块级常量**共享** `stats`/`toolNames`/`history` 引用 ⇒ 改 `freshDefaultState()` 深拷贝（此前两次初始化会互相污染，`history.push` 直写模块态）。**行为变更可见**：`history` 脏项不再原样往返。测试 50 → **56**（含 NaN 消除、两次初始化互不影响、坏项丢弃三项边界）
 - 2026-09-14 文档回修（README/语义漂移治理）：§8「实现面」与 §10-4 的「无 `tests/`、无 `test` 脚本」已过期——实际已拆层为 `engine.ts`/`storage.ts`/`index.ts` 并有 50 例单测（`pass 50 / fail 0` 实测）；§7-8 的「无单测」依据作废（**但该条判的是 E2E 观察面，仍待验收**，不得用单测替代）
 - 2026-09-14 补课：本插件此前无语义文档（可维护性工程）
 - 2026-09-03 修复「上午必沮丧」时间窗口不对称：基线按当日时间进度折算（clamp [0.05,1]），不再与「昨日全天」硬比

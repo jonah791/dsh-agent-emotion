@@ -69,6 +69,59 @@ export const DEFAULT_STATE: EmotionState = {
   history: [],
 }
 
+/**
+ * 全新默认状态（每次调用新造对象）。
+ * **缺文件/损坏分支必须走这里**——返回 `{ ...DEFAULT_STATE }` 会与模块级常量共享
+ * `stats` / `toolNames` / `history` 的**引用**，调用方一改就污染模块态（登记缺口已修，2026-09-14）。
+ */
+export function freshDefaultState(): EmotionState {
+  return {
+    today: '', stats: emptyStats(), toolNames: [], triggerCount: 0,
+    weights: { ...DEFAULT_STATE.weights }, emotions: {}, history: [],
+  }
+}
+
+/** 「非数组的普通对象」判据（规范化边界用） */
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+/**
+ * 规范化单条历史项：缺字段补默认；数值字段非有限数一律归零；非对象 → undefined（由调用方丢弃）。
+ * 判据单一真源 = `emptyStats()` / `SIX_SIDES` / `DEFAULT_STATE.weights`。
+ * 修复动机：`emotion-state.json` 的 history 未经结构校验（撕裂写/手改/旧版本文件），
+ * 缺 `stats` 的一项会让 `runEmotionEngine` 在**事件回调内**抛 TypeError。
+ */
+export function normalizeHistoryEntry(raw: unknown): HistoryEntry | undefined {
+  if (!isPlainRecord(raw)) return undefined
+  const out: HistoryEntry = { date: '', stats: emptyStats(), weights: { ...DEFAULT_STATE.weights }, emotions: {} }
+  if (typeof raw.date === 'string') out.date = raw.date
+  if (isPlainRecord(raw.stats)) {
+    for (const k of Object.keys(out.stats) as Array<keyof SideStats>) {
+      const v = raw.stats[k]
+      if (typeof v === 'number' && Number.isFinite(v)) out.stats[k] = v
+    }
+  }
+  if (isPlainRecord(raw.weights)) {
+    for (const k of SIX_SIDES) {
+      const v = raw.weights[k]
+      if (typeof v === 'number' && Number.isFinite(v)) out.weights[k] = v
+    }
+  }
+  if (isPlainRecord(raw.emotions)) {
+    for (const [k, v] of Object.entries(raw.emotions)) {
+      if (typeof v === 'number' && Number.isFinite(v)) out.emotions[k] = v
+    }
+  }
+  return out
+}
+
+/** 规范化整段 history：非数组 → []；坏项丢弃（不抛） */
+export function normalizeHistory(raw: unknown): HistoryEntry[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map(normalizeHistoryEntry).filter((e): e is HistoryEntry => e !== undefined)
+}
+
 /** 侧面六（因果留痕）：写入类工具白名单 */
 export const WRITE_TOOLS = ['remember', 'update', 'write', 'edit', 'skill_commit', 'wq_report_blindspot', 'wq_add_to_zoo', 'wq_add_weak_signal']
 
@@ -143,7 +196,8 @@ export function ensureToday(state: EmotionState, now: Date): void {
 /** 情感引擎主入口：基于今日 stats 和最近基线更新 emotions + weights（时间由调用方注入） */
 export function runEmotionEngine(state: EmotionState, now: Date): void {
   // 基线 = 昨日快照（history 最后一项）或最近非零基线
-  const last = state.history[state.history.length - 1]
+  // 2026-09-14 修复：历史项一律经规范化再读——缺 stats / 脏数值不再把 TypeError 抛进事件回调
+  const last = normalizeHistoryEntry(Array.isArray(state.history) ? state.history[state.history.length - 1] : undefined)
   const today = sideGrowth(state.stats)
   // 2026-09-03 修复「上午必沮丧」时间窗口不对称：基线按当日已过时间比例折算
   // （对比「昨日同时刻」而非「昨日全天」——否则上午累积 < 昨日全天 → 恒负假信号）。

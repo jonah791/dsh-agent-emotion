@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { DEFAULT_STATE, emptyStats } from './engine.ts'
+import { DEFAULT_STATE, emptyStats, freshDefaultState, normalizeHistory } from './engine.ts'
 import type { EmotionState } from './engine.ts'
 
 /** 状态文件路径（2026-08-30 对齐：DSH_HOME 用环境变量，替代 homedir 旧路径） */
@@ -31,16 +31,18 @@ export function loadState(path: string): EmotionState {
         ...DEFAULT_STATE,
         ...parsed,
         stats: { ...emptyStats(), ...(parsed.stats ?? {}) },
-        toolNames: parsed.toolNames ?? [],
+        toolNames: Array.isArray(parsed.toolNames) ? [...parsed.toolNames] : [],
         weights: { ...DEFAULT_STATE.weights, ...(parsed.weights ?? {}) },
         emotions: parsed.emotions ?? {},
-        history: parsed.history ?? [],
+        // history 项结构性校验（缺 stats/脏字段 → 规范化；坏项丢弃）——L1 修复入口
+        history: normalizeHistory(parsed.history),
       }
     }
   } catch (error) {
     // 状态损坏 → 重置
   }
-  return { ...DEFAULT_STATE }
+  // 深拷贝默认值：不得与模块级 DEFAULT_STATE 共享引用（L3 修复）
+  return freshDefaultState()
 }
 
 /** 写状态：失败吞错并返回 false（调用方忽略返回值，失败不阻塞采集） */
