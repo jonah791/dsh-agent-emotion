@@ -33,6 +33,12 @@ import {
 import type { SideStats } from './engine.ts'
 import { resolveDataPath, loadState, saveState } from './storage.ts'
 
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'dsh-agent-emotion': { kind: 'dsh-agent-emotion' }
+  }
+}
+
 export const name = 'agent-emotion'
 // memoryApi：可选回流服务（dsh-agent-memory 提供；未挂载时 undefined → 每日快照只留插件内 history，不回流）
 export const inject = ['tools', 'agents', 'memoryApi'] as const
@@ -120,7 +126,7 @@ export function apply(ctx: Context, config: Config): void {
         payload.agent.inject(
           createUserMessage({
             content: [{ type: 'text', text }],
-            source: { kind: 'plugin', plugin: 'dsh-agent-emotion' },
+            source: { kind: 'dsh-agent-emotion' },
           }),
         )
       } catch (error) {
