@@ -133,6 +133,7 @@
 - 2026-09-03 修复「上午必沮丧」时间窗口不对称：基线按当日时间进度折算（clamp [0.05,1]），不再与「昨日全天」硬比
 - 2026-09-06 新增 `memoryApi` 日结回流（跨天时把昨日 6 维统计回流为 episodic）
 - 2026-08-30 状态路径对齐 `DSH_HOME` 环境变量（替代 `homedir()` 旧路径），防状态写错位置跨重启丢失
+- **2026-09-28 D3 复核（0.1.7 平台适配波次 · 判为假报）**：触发提交 `eae12d7`「fix(0.1.7): MessageSourceMap.plugin 已移除 ⇒ 生产者改自声明 source kind」。逐行对读（+7/−1）确认改动只有两处：新增 `declare module` 的 `MessageSourceMap` 声明、一处 `source: { kind: 'plugin', plugin: 'dsh-agent-emotion' }` → `{ kind: 'dsh-agent-emotion' }`。**六侧面采集语义与 §7 验收表未被触及** ⇒ 不为消警而改内容。复核方式：`git -C self-plugins/dsh-agent-emotion show eae12d7`。
 
 ## 10 · 未决问题
 
