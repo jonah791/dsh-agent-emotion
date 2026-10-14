@@ -14,7 +14,7 @@
   <a href="https://github.com/jonah791/dsh-agent-emotion"><img src="https://img.shields.io/badge/version-0.1.1-blue" alt="version"></a>
   <img src="https://img.shields.io/badge/License-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/TypeScript-3178C6" alt="TypeScript">
-  <img src="https://img.shields.io/badge/tests-50%20passed-brightgreen" alt="tests">
+  <img src="https://img.shields.io/badge/tests-56%20passed-brightgreen" alt="tests">
 </p>
 
 **一句话**：把 SOUL.md 里的「6 维进化棱镜」变成可读数的运行时传感器——订阅工具管线与会话事件，被动累计 6 侧面信号，算出「今日增速 vs 昨日同时刻」的差值当情感信号，并让人格权重随之漂移；`emotion_status` 一行答出「此刻的我」在哪六个维度上活跃。
