@@ -101,9 +101,9 @@
 
 | # | 可证伪命题 | 证据（单测名 / 命令 / 日志行 / 落盘产物） | 状态 |
 |---|------------|------------------------------------------|------|
-| 1 | 插件在 web 中被加载且版本为 0.1.1 | `E:\alice\.dsh\plugin-boot.jsonl` 末行 `live` 含 `dsh-agent-emotion`，`plugins[]` 记 `version:"0.1.1", libMtimeMs:1788688983564`（`stale` 为空） | 已验证（2026-09-14 读数） |
-| 2 | 每次工具结果使 `stats.toolCalls` 单调增长且 `toolSuccess + toolErrors == toolCalls` | 读 `E:\alice\.dsh\agent-emotion\emotion-state.json`：`toolCalls 599 / success 578 / errors 21`（578+21=599） | 已验证（2026-09-14 读数） |
-| 3 | `emotion_status` 可答且返回 `ok:true` + `sides` 六键 | 调用 `emotion_status`，断言 `ok===true`、`sides` 含 cognition/resilience/existence/relation/frontier/legacy | 已验证（工具在当前工具面） |
+| 1 | 插件在 web 中被加载且版本为 0.1.1 | `E:\alice\.dsh\plugin-boot.jsonl` 末行 `live` 含 `dsh-agent-emotion`，`plugins[]` 记 `version:"0.1.1", libMtimeMs:1788688983564`（`stale` 为空） | ✔ 已实测（2026-09-14 读数） |
+| 2 | 每次工具结果使 `stats.toolCalls` 单调增长且 `toolSuccess + toolErrors == toolCalls` | 读 `E:\alice\.dsh\agent-emotion\emotion-state.json`：`toolCalls 599 / success 578 / errors 21`（578+21=599） | ✔ 已实测（2026-09-14 读数） |
+| 3 | `emotion_status` 可答且返回 `ok:true` + `sides` 六键 | 调用 `emotion_status`，断言 `ok===true`、`sides` 含 cognition/resilience/existence/relation/frontier/legacy | ✔ 已实测（工具在当前工具面） |
 | 4 | 跨天重置今日统计、昨日入史，且按本地时区判日 | 次日读 `emotion-state.json`：`today` 前进、`history` 末项 `date` = 前一日、`triggerCount` +1（`emotion_status` 的 `historyCount` 亦可观察）；东八区 23:30 与 00:30 两次读数 `today` 各自正确（若用 `toISOString` 会在 08:00 前错判前一日） | 待验收（需跨日样本） |
 | 5 | `preStepInject=true` 时确实注入 `[情感感知]` 用户消息并放行 | 会话事件流出现 `source.kind='plugin'`、`plugin='dsh-agent-emotion'` 的 `user/message`，且该步未卡死；`ctx.on` 返回前调用 `next()` | 待验收（线上配置 `false`，注入路径未跑） |
 | 6 | `memoryApi` 未挂载时不抛错、不回流 | 跨天后 `history` 增长而记忆库无 `## 6 维日结` 新增条目；进程日志无未捕获异常 | 待验收 |
