@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { DEFAULT_STATE, emptyStats, freshDefaultState, normalizeHistory } from './engine.ts'
+import { DEFAULT_STATE, emptyStats, freshDefaultState, normalizeHistory, resolveSeenTools } from './engine.ts'
 import type { EmotionState } from './engine.ts'
 
 /** 状态文件路径（2026-08-30 对齐：DSH_HOME 用环境变量，替代 homedir 旧路径） */
@@ -32,6 +32,8 @@ export function loadState(path: string): EmotionState {
         ...parsed,
         stats: { ...emptyStats(), ...(parsed.stats ?? {}) },
         toolNames: Array.isArray(parsed.toolNames) ? [...parsed.toolNames] : [],
+        // 迁移：缺 seenTools（老文件）⇒ 用当日 toolNames 播种；存在则原样（含空数组，那是全新状态）
+        seenTools: resolveSeenTools(parsed.seenTools, parsed.toolNames),
         weights: { ...DEFAULT_STATE.weights, ...(parsed.weights ?? {}) },
         emotions: parsed.emotions ?? {},
         // history 项结构性校验（缺 stats/脏字段 → 规范化；坏项丢弃）——L1 修复入口

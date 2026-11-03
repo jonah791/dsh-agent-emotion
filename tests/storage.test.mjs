@@ -15,8 +15,11 @@ after(() => { rmSync(root, { recursive: true, force: true }) })
 
 const sample = () => ({
   today: '2026-09-14',
-  stats: { toolCalls: 9, toolSuccess: 8, toolErrors: 1, interactions: 3, outputs: 5, legacyWrites: 2, frontierTools: 6, reasoningChars: 120, reasoningEvents: 4 },
+  stats: { toolCalls: 9, toolSuccess: 8, toolErrors: 1, interactions: 3, outputs: 5, legacyWrites: 2, frontierTools: 6, newTools: 2, reasoningChars: 120, reasoningEvents: 4 },
   toolNames: ['remember', 'write'],
+  // 2026-11-03：新格式样本显式带 seenTools——往返恒等只对「已规范化」的样本成立。
+  // 老格式（缺 seenTools）→ 新格式的迁移**不走恒等**，另有专测（frontier.test.mjs）。
+  seenTools: ['remember', 'write'],
   triggerCount: 7,
   weights: { cognition: 0.2, resilience: 0.1, existence: 0.2, relation: 0.1, frontier: 0.2, legacy: 0.2 },
   emotions: { cognition: 0.5 },

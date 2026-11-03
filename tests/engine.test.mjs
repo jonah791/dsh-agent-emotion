@@ -14,7 +14,7 @@ import {
 
 const stats = (over = {}) => ({ ...emptyStats(), ...over })
 // 注意：toolNames/history/weights/stats 一律新造，避免污染模块级 DEFAULT_STATE（共享引用）
-const state = (over = {}) => ({ ...DEFAULT_STATE, stats: emptyStats(), toolNames: [], weights: { ...DEFAULT_STATE.weights }, emotions: {}, history: [], ...over })
+const state = (over = {}) => ({ ...DEFAULT_STATE, stats: emptyStats(), toolNames: [], seenTools: [], weights: { ...DEFAULT_STATE.weights }, emotions: {}, history: [], ...over })
 
 // ---------- 基础常数 ----------
 
@@ -23,9 +23,9 @@ test('6 侧面定义与写入工具白名单逐字锁定', () => {
   assert.deepEqual(WRITE_TOOLS, ['remember', 'update', 'write', 'edit', 'skill_commit', 'wq_report_blindspot', 'wq_add_to_zoo', 'wq_add_weak_signal'])
 })
 
-test('emptyStats：9 个计数全 0', () => {
+test('emptyStats：10 个计数全 0（2026-11-03 新增 newTools：疆域开拓改「历史首见」）', () => {
   const s = emptyStats()
-  assert.equal(Object.keys(s).length, 9)
+  assert.equal(Object.keys(s).length, 10)
   assert.ok(Object.values(s).every((v) => v === 0))
 })
 
@@ -39,9 +39,11 @@ test('localDate/dayProgress：时间由外部注入（本地时刻语义）', ()
 
 test('sideGrowth：真实常数的 6 侧面映射（+1 防零基线）', () => {
   assert.deepEqual(sideGrowth(emptyStats()), { cognition: 0, resilience: 1, existence: 0, relation: 0, frontier: 1, legacy: 1 })
+  // 2026-11-03：frontier 改由 newTools（历史首见）驱动，不再由 frontierTools（当日广度）驱动。
+  // 两个字段故意给不同值（7 vs 2）⇒ 这条断言能区分「frontier 跟谁走」，不是把旧数字改一改。
   assert.deepEqual(
-    sideGrowth(stats({ toolCalls: 10, toolErrors: 3, outputs: 4, interactions: 2, frontierTools: 7, legacyWrites: 5 })),
-    { cognition: 10, resilience: 4, existence: 6, relation: 2, frontier: 8, legacy: 6 },
+    sideGrowth(stats({ toolCalls: 10, toolErrors: 3, outputs: 4, interactions: 2, frontierTools: 7, newTools: 2, legacyWrites: 5 })),
+    { cognition: 10, resilience: 4, existence: 6, relation: 2, frontier: 3, legacy: 6 },
   )
 })
 
@@ -356,14 +358,15 @@ test('shouldReflux：换天 + 昨日有活动才回流', () => {
 })
 
 test('buildDailyDigest：逐字锁定 6 维日结文本（含命中率取整）', () => {
-  const text = buildDailyDigest('2026-09-13', stats({ toolCalls: 4, toolSuccess: 3, toolErrors: 1, outputs: 7, interactions: 2, frontierTools: 5, legacyWrites: 6 }))
+  // frontierTools(5) 与 newTools(2) 故意不同 ⇒ 这行必须用 newTools，广度另报
+  const text = buildDailyDigest('2026-09-13', stats({ toolCalls: 4, toolSuccess: 3, toolErrors: 1, outputs: 7, interactions: 2, frontierTools: 5, newTools: 2, legacyWrites: 6 }))
   assert.equal(text,
     '## 6 维日结 2026-09-13\n\n' +
     '一·认知锚点：工具预期命中率 75%（4 次，成功 3 失败 1）\n' +
     '二·韧性引擎：失败 1 次\n' +
     '三·存在显影：输出 7 / 交互 2\n' +
     '四·关系织网：交互 2 次\n' +
-    '五·疆域开拓：新工具 5 个\n' +
+    '五·疆域开拓：新工具 2 个（当日广度 5 种）\n' +
     '六·因果留痕：写入 6 条')
 })
 

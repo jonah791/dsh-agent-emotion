@@ -139,7 +139,7 @@ export function apply(ctx: Context, config: Config): void {
   // ---------- 呈现层：emotion_status（查询当前 6 侧状态） ----------
   ctx.tools.register(defineTool({
     name: 'emotion_status',
-    description: '查询情感与人格插件的当前状态：今日 6 侧面采集统计（认知锚点=工具预期命中率/韧性=错误数/存在=输出交互/关系=交互数/疆域=新工具数/因果=写入数）+ 触发天数。查看「此刻的我」在 6 个维度上的实时信号。',
+    description: '查询情感与人格插件的当前状态：今日 6 侧面采集统计（认知锚点=工具预期命中率/韧性=错误数/存在=输出交互/关系=交互数/疆域=历史首见的新工具数/因果=写入数）+ 触发天数。查看「此刻的我」在 6 个维度上的实时信号。',
     parameters: {},
     output: {
       schema: {
@@ -174,7 +174,7 @@ export function apply(ctx: Context, config: Config): void {
             '二·韧性引擎：失败 ' + (s.toolErrors ?? 0) + ' 次（可重构信号）\n' +
             '三·存在显影：输出 ' + (s.outputs ?? 0) + ' / 交互 ' + (s.interactions ?? 0) + '\n' +
             '四·关系织网：交互 ' + (s.interactions ?? 0) + ' 次\n' +
-            '五·疆域开拓：新工具 ' + (s.frontierTools ?? 0) + ' 个\n' +
+            '五·疆域开拓：新工具 ' + (s.newTools ?? 0) + ' 个（当日广度 ' + (s.frontierTools ?? 0) + ' 种）\n' +
             '六·因果留痕：写入 ' + (s.legacyWrites ?? 0) + ' 条\n' +
             '人格权重（6维，和100%）：' + wStr + '\n' +
             '情感信号（增速差值，↑喜悦 ↓沮丧）：' + JSON.stringify(e),
@@ -198,7 +198,7 @@ export function apply(ctx: Context, config: Config): void {
           resilience: { label: '韧性引擎', errors: s.toolErrors },
           existence: { label: '存在显影', outputs: s.outputs, interactions: s.interactions },
           relation: { label: '关系织网', interactions: s.interactions },
-          frontier: { label: '疆域开拓', tools: s.frontierTools },
+          frontier: { label: '疆域开拓', newTools: s.newTools, breadth: s.frontierTools },
           legacy: { label: '因果留痕', writes: s.legacyWrites },
         },
       }

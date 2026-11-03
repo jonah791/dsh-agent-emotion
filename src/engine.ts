@@ -24,8 +24,10 @@ export interface SideStats {
   outputs: number
   /** 记忆/文件写入数（侧面六） */
   legacyWrites: number
-  /** 新工具名集合大小（侧面五） */
+  /** 当日工具广度：今天用过的不同工具数（描述性读数，每天重置；**不是**疆域开拓） */
   frontierTools: number
+  /** 疆域开拓：**历史首次**出现的工具数（跨天累积）——sideGrowth 用这个 */
+  newTools: number
   /** reasoning 元特征：推理 delta 总长度（字符） */
   reasoningChars: number
   /** reasoning 触发次数 */
@@ -44,8 +46,14 @@ export interface EmotionState {
   today: string
   /** 今日统计 */
   stats: SideStats
-  /** 工具名集合（去重，侧面五） */
+  /** 当日工具名集合（去重，**每天清空**）——描述「今天动了多宽的面」，不是疆域 */
   toolNames: string[]
+  /**
+   * **历史用过的全部工具**（跨天累积，不清空）——「疆域开拓」的真源。
+   * 与 toolNames 的分工：toolNames 是当日广度，seenTools 是历史边界。
+   * 迁移：老状态文件缺此字段时由 `resolveSeenTools` 用当日 toolNames 播种（不必从空开始）。
+   */
+  seenTools: string[]
   /** 触发天数 */
   triggerCount: number
   /** 人格权重向量（6 维，和=1）——V2 */
@@ -59,11 +67,11 @@ export interface EmotionState {
 export const emptyStats = (): SideStats => ({
   toolCalls: 0, toolSuccess: 0, toolErrors: 0,
   interactions: 0, outputs: 0, legacyWrites: 0,
-  frontierTools: 0, reasoningChars: 0, reasoningEvents: 0,
+  frontierTools: 0, newTools: 0, reasoningChars: 0, reasoningEvents: 0,
 })
 
 export const DEFAULT_STATE: EmotionState = {
-  today: '', stats: emptyStats(), toolNames: [], triggerCount: 0,
+  today: '', stats: emptyStats(), toolNames: [], seenTools: [], triggerCount: 0,
   weights: { cognition: 1 / 6, resilience: 1 / 6, existence: 1 / 6, relation: 1 / 6, frontier: 1 / 6, legacy: 1 / 6 },
   emotions: {},
   history: [],
@@ -76,7 +84,7 @@ export const DEFAULT_STATE: EmotionState = {
  */
 export function freshDefaultState(): EmotionState {
   return {
-    today: '', stats: emptyStats(), toolNames: [], triggerCount: 0,
+    today: '', stats: emptyStats(), toolNames: [], seenTools: [], triggerCount: 0,
     weights: { ...DEFAULT_STATE.weights }, emotions: {}, history: [],
   }
 }
@@ -122,6 +130,24 @@ export function normalizeHistory(raw: unknown): HistoryEntry[] {
   return raw.map(normalizeHistoryEntry).filter((e): e is HistoryEntry => e !== undefined)
 }
 
+/**
+ * 迁移判据：`seenTools` **缺失**（老状态文件）与「存在但为空」（全新状态）必须分开。
+ *
+ * - 缺失 ⇒ 用当日 `toolNames` 播种。否则空集合会把今天见过的几十个工具全部算成「历史首次」
+ *   ⇒ `newTools` 一次性爆表（实测口径：74 个工具 ⇒ today=75、baseline=1×日进度）⇒ 信号数百
+ *   ⇒ `driftWeights` 把疆域权重直接顶到上限 0.5。**这不是读数噪声，是真实的权重副作用。**
+ * - 存在 ⇒ 原样过滤字符串项（空数组是合法状态，不播种）。
+ *
+ * ⚠ 已知近似（不掩盖）：过去用过、当日未用的工具，在之后首次出现时会被误计一次「新」。
+ *   误差自愈——同一工具只误报一次，误报后即进 `seenTools`，且随天数衰减。
+ *   要彻底消除需要一份历史工具面快照，而历史项里从未存过 `toolNames`。
+ */
+export function resolveSeenTools(raw: unknown, toolNames: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((x): x is string => typeof x === 'string')
+  if (!Array.isArray(toolNames)) return []
+  return toolNames.filter((x): x is string => typeof x === 'string')
+}
+
 /** 侧面六（因果留痕）：写入类工具白名单 */
 export const WRITE_TOOLS = ['remember', 'update', 'write', 'edit', 'skill_commit', 'wq_report_blindspot', 'wq_add_to_zoo', 'wq_add_weak_signal']
 
@@ -143,7 +169,7 @@ export function sideGrowth(s: SideStats): Record<SideKey, number> {
     resilience: s.toolErrors + 1,  // 韧性引擎：失败数+1（避免 0 基线除零）
     existence: s.outputs + s.interactions, // 存在显影：输出+交互
     relation: s.interactions,      // 关系织网：交互数
-    frontier: s.frontierTools + 1, // 疆域开拓：新工具数+1
+    frontier: s.newTools + 1,      // 疆域开拓：历史首次出现的新工具数+1（当日广度不在此列）
     legacy: s.legacyWrites + 1,    // 因果留痕：写入数+1
   }
 }
@@ -231,18 +257,33 @@ export function shouldRecordEvent(input: { enabled: boolean; mainSessionOnly: bo
   return true
 }
 
-/** 采集归约①：tools/result → 侧面一（工具调用/成功/失败）+ 侧面五（新工具）+ 侧面六（写入类工具） */
+/** seenTools 上限：现工具面约 438 个，留余量。超上限后不再记新工具（宁可漏报，也不让状态文件无限长） */
+const SEEN_TOOLS_CAP = 1000
+
+/** 采集归约①：tools/result → 侧面一（工具调用/成功/失败）+ 侧面五（疆域开拓 + 当日广度）+ 侧面六（写入类工具） */
 export function recordToolResult(state: EmotionState, input: { name?: string; isError: boolean }): void {
   const s = state.stats
   // 侧面一：工具调用 = 行为化预期；isError = 实际（结构化对比）
   s.toolCalls += 1
   if (input.isError) s.toolErrors += 1
   else s.toolSuccess += 1
-  // 侧面五：新工具（疆域开拓）
+  // 侧面五：疆域开拓 = **历史首次**出现的工具（seenTools 跨天累积、不清空）
+  // 防御：调用方若给到缺字段的 state，就地归一形状，不让 TypeError 逃进事件回调
+  if (!Array.isArray(state.seenTools)) state.seenTools = []
+  if (!Array.isArray(state.toolNames)) state.toolNames = []
   const name = input.name
-  if (name !== undefined && !state.toolNames.includes(name)) {
-    state.toolNames.push(name)
-    s.frontierTools = state.toolNames.length
+  if (name !== undefined) {
+    if (!state.seenTools.includes(name)) {
+      if (state.seenTools.length < SEEN_TOOLS_CAP) {
+        state.seenTools.push(name)
+        s.newTools += 1
+      }
+    }
+    // 当日广度（描述性读数）：今天动过多宽的面——每天重置，与「疆域」是两件事
+    if (!state.toolNames.includes(name)) {
+      state.toolNames.push(name)
+      s.frontierTools = state.toolNames.length
+    }
   }
   // 侧面六：因果留痕——写入类工具（记忆/文件/技能/平台）成功调用
   if (name !== undefined && !input.isError && WRITE_TOOLS.includes(name)) {
@@ -272,6 +313,6 @@ export function buildDailyDigest(prevToday: string, prevStats: SideStats): strin
     '二·韧性引擎：失败 ' + prevStats.toolErrors + ' 次\n' +
     '三·存在显影：输出 ' + prevStats.outputs + ' / 交互 ' + prevStats.interactions + '\n' +
     '四·关系织网：交互 ' + prevStats.interactions + ' 次\n' +
-    '五·疆域开拓：新工具 ' + prevStats.frontierTools + ' 个\n' +
+    '五·疆域开拓：新工具 ' + prevStats.newTools + ' 个（当日广度 ' + prevStats.frontierTools + ' 种）\n' +
     '六·因果留痕：写入 ' + prevStats.legacyWrites + ' 条'
 }
