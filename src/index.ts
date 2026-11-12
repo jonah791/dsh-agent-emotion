@@ -139,6 +139,7 @@ export function apply(ctx: Context, config: Config): void {
   // ---------- 呈现层：emotion_status（查询当前 6 侧状态） ----------
   ctx.tools.register(defineTool({
     name: 'emotion_status',
+    deferLoading: true,
     description: '查询情感与人格插件的当前状态：今日 6 侧面采集统计（认知锚点=工具预期命中率/韧性=错误数/存在=输出交互/关系=交互数/疆域=历史首见的新工具数/因果=写入数）+ 触发天数。查看「此刻的我」在 6 个维度上的实时信号。',
     parameters: {},
     output: {
