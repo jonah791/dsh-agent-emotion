@@ -67,12 +67,14 @@ export function apply(ctx: Context, config: Config): void {
 
   // 记忆回流（2026-09-06）：跨天时把昨日 6 维统计回流主记忆库（episodic）。
   // memoryApi 可选服务（dsh-agent-memory 未挂载时 undefined → 静默跳过，插件内 history 仍保留）。
-  const refluxIfNewDay = (prevToday: string, prevStats: SideStats, nowToday: string): void => {
+  // v0.61：带上会话 id —— 记忆库据此盖证据坐标（`session|<id>|<seq>`），
+  // 否则这条回流在阅读侧是「查不回原文」的一类（实测它正是近 1 天漏坐标的三条之一）。
+  const refluxIfNewDay = (prevToday: string, prevStats: SideStats, nowToday: string, sessionId?: string): void => {
     if (!shouldReflux(prevToday, prevStats, nowToday)) return
-    const api = (ctx as unknown as { memoryApi?: { remember(input: { text: string; kind?: string; tags?: string[] }): Promise<unknown> } }).memoryApi
+    const api = (ctx as unknown as { memoryApi?: { remember(input: { text: string; kind?: string; tags?: string[]; sessionId?: string }): Promise<unknown> } }).memoryApi
     if (api === undefined) return
     const text = buildDailyDigest(prevToday, prevStats)
-    void api.remember({ text, kind: 'episodic', tags: ['6维', '日结', prevToday] }).catch(() => { /* 回流失败静默 */ })
+    void api.remember({ text, kind: 'episodic', tags: ['6维', '日结', prevToday], ...(sessionId !== undefined && sessionId !== '' ? { sessionId } : {}) }).catch(() => { /* 回流失败静默 */ })
   }
 
   // ---------- 感知层：tools/result（emit 只读通知，不干预） ----------
@@ -83,7 +85,7 @@ export function apply(ctx: Context, config: Config): void {
     const prevToday = state.today
     const prevStats = { ...state.stats }
     ensureToday(state, new Date())
-    refluxIfNewDay(prevToday, prevStats, state.today)
+    refluxIfNewDay(prevToday, prevStats, state.today, exec.agent?.session?.id)
     // 侧面一（预期 vs 实际）+ 侧面五（新工具）+ 侧面六（写入类工具）
     recordToolResult(state, { name: (exec as any).name as string | undefined, isError: Boolean(result.isError) })
     runEmotionEngine(state, new Date())
@@ -102,7 +104,7 @@ export function apply(ctx: Context, config: Config): void {
     const prevToday = state.today
     const prevStats = { ...state.stats }
     ensureToday(state, new Date())
-    refluxIfNewDay(prevToday, prevStats, state.today)
+    refluxIfNewDay(prevToday, prevStats, state.today, session?.id)
     // 侧面三/四：交互（user/message）与输出（assistant/message）
     recordSessionEvent(state, type)
     runEmotionEngine(state, new Date())
